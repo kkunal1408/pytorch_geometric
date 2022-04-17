@@ -18,6 +18,9 @@ subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
                                   batch_size=1024, shuffle=False,
                                   num_workers=12)
 
+print(train_loader)
+print(subgraph_loader)
+
 
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels):
@@ -125,7 +128,7 @@ def test():
     return results
 
 
-for epoch in range(1, 11):
+for epoch in range(1, 2):
     loss, acc = train(epoch)
     print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
     train_acc, val_acc, test_acc = test()

@@ -8,6 +8,7 @@ from .citation_full import CitationFull, CoraFull
 from .coauthor import Coauthor
 from .amazon import Amazon
 from .ppi import PPI
+from .ota_ppi import OTA_PPI
 from .reddit import Reddit
 from .reddit2 import Reddit2
 from .flickr import Flickr

@@ -59,7 +59,9 @@ def gcn_norm(edge_index, edge_weight=None, num_nodes=None, improved=False,
             edge_weight = tmp_edge_weight
 
         row, col = edge_index[0], edge_index[1]
+        print(edge_weight)
         deg = scatter_add(edge_weight, col, dim=0, dim_size=num_nodes)
+        print(deg)
         deg_inv_sqrt = deg.pow_(-0.5)
         deg_inv_sqrt.masked_fill_(deg_inv_sqrt == float('inf'), 0)
         return edge_index, deg_inv_sqrt[row] * edge_weight * deg_inv_sqrt[col]

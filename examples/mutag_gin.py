@@ -50,6 +50,7 @@ class Net(torch.nn.Module):
         x = self.conv3(x, edge_index)
         x = self.conv4(x, edge_index)
         x = self.conv5(x, edge_index)
+        print(f"batch: {batch}")
         x = global_add_pool(x, batch)
         x = self.lin1(x).relu()
         x = F.dropout(x, p=0.5, training=self.training)
@@ -58,6 +59,7 @@ class Net(torch.nn.Module):
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(dataset.num_features, 32, dataset.num_classes)
 model = Net(dataset.num_features, 32, dataset.num_classes).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
@@ -69,7 +71,12 @@ def train():
     for data in train_loader:
         data = data.to(device)
         optimizer.zero_grad()
+        print(f"data1: {data}")
+        print(data.batch.size())
         output = model(data.x, data.edge_index, data.batch)
+        print(f"output: {output.size()}")
+        print(f"{data.y.size()}")
+        print(data.batch, data.y)
         loss = F.nll_loss(output, data.y)
         loss.backward()
         optimizer.step()
@@ -89,7 +96,7 @@ def test(loader):
     return total_correct / len(loader.dataset)
 
 
-for epoch in range(1, 101):
+for epoch in range(1, 2):
     loss = train()
     train_acc = test(train_loader)
     test_acc = test(test_loader)

@@ -58,6 +58,7 @@ class DataLoader(torch.utils.data.DataLoader):
         **kwargs (optional): Additional arguments of
             :class:`torch.utils.data.DataLoader`.
     """
+
     def __init__(
         self,
         dataset: Union[Dataset, List[Data], List[HeteroData]],
@@ -74,7 +75,6 @@ class DataLoader(torch.utils.data.DataLoader):
         # Save for PyTorch Lightning...
         self.follow_batch = follow_batch
         self.exclude_keys = exclude_keys
-
         super().__init__(dataset, batch_size, shuffle,
                          collate_fn=Collater(follow_batch,
                                              exclude_keys), **kwargs)

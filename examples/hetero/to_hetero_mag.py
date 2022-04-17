@@ -19,8 +19,10 @@ path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/OGB')
 transform = T.ToUndirected(merge=True)
 dataset = OGB_MAG(path, preprocess='metapath2vec', transform=transform)
 data = dataset[0]
+print(data)
 
 train_input_nodes = ('paper', data['paper'].train_mask)
+print(train_input_nodes)
 val_input_nodes = ('paper', data['paper'].val_mask)
 kwargs = {'batch_size': 1024, 'num_workers': 6, 'persistent_workers': True}
 
@@ -94,7 +96,7 @@ def test(loader):
 init_params()  # Initialize parameters.
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-for epoch in range(1, 21):
+for epoch in range(1, 2):
     loss = train()
     val_acc = test(val_loader)
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Val: {val_acc:.4f}')

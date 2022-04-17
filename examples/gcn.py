@@ -16,13 +16,7 @@ dataset = 'Cora'
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', dataset)
 dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
 data = dataset[0]
-print(data)
-print(type(data), type(data.x), type(data.y), type(data.edge_index))
-print(data.x[0][0],type(data.x[0][0]), data.y[0], type(data.y[0]))
-print(data.x)
-print(data.y)
-print(data.edge_index)
-exit()
+print(type(data.edge_attr))
 if args.use_gdc:
     gdc = T.GDC(self_loop_weight=1, normalization_in='sym',
                 normalization_out='col',
@@ -77,7 +71,7 @@ def test():
 
 
 best_val_acc = test_acc = 0
-for epoch in range(1, 201):
+for epoch in range(1, 2):
     train()
     train_acc, val_acc, tmp_test_acc = test()
     if val_acc > best_val_acc:

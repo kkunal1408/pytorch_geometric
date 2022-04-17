@@ -1,6 +1,7 @@
 import os.path as osp
 
 import torch
+import csv
 from torch.nn import Linear
 import torch.nn.functional as F
 from sklearn.metrics import f1_score
@@ -9,7 +10,7 @@ import torch_geometric.transforms as T
 from torch_geometric.nn import GCN2Conv
 from torch_geometric.loader import DataLoader
 
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'GCN2_PPI')
+path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'PPI_GANA')
 pre_transform = T.Compose([T.GCNNorm(), T.ToSparseTensor()])
 train_dataset = PPI(path, split='train', pre_transform=pre_transform)
 val_dataset = PPI(path, split='val', pre_transform=pre_transform)
@@ -23,7 +24,8 @@ print(train_dataset[0])
 print(train_dataset[0].x)
 print(train_dataset[0].y)
 print(train_dataset[0].adj_t)
-exit()
+
+
 class Net(torch.nn.Module):
     def __init__(self, hidden_channels, num_layers, alpha, theta,
                  shared_weights=True, dropout=0.0):
@@ -93,9 +95,29 @@ def test(loader):
     return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
 
 
-for epoch in range(1, 2001):
+@torch.no_grad()
+def debug(loader):
+    model.eval()
+    merged = []
+    ys, preds = [], []
+    for data in loader:
+        ys.append(data.y)
+        out = model(data.x.to(device), data.adj_t.to(device))
+        preds.append((out > 0).float().cpu())
+        debug = torch.cat((data.x, data.y, (out > 0)), dim=1)
+        merged.append(debug.numpy())
+    with open("debug_result.csv", 'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerows(merged)
+
+    y, pred = torch.cat(ys, dim=0).numpy(), torch.cat(preds, dim=0).numpy()
+    return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
+
+
+for epoch in range(1, 2):
     loss = train()
     val_f1 = test(val_loader)
     test_f1 = test(test_loader)
     print('Epoch: {:02d}, Loss: {:.4f}, Val: {:.4f}, Test: {:.4f}'.format(
         epoch, loss, val_f1, test_f1))
+debug(test_loader)

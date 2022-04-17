@@ -163,6 +163,7 @@ class MessagePassing(torch.nn.Module):
     def __lift__(self, src, edge_index, dim):
         if isinstance(edge_index, Tensor):
             index = edge_index[dim]
+            # print(f"Hello {index}, {src}")
             return src.index_select(self.node_dim, index)
         elif isinstance(edge_index, SparseTensor):
             if dim == 1:

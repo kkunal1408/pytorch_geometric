@@ -13,7 +13,7 @@ splitted_idx = dataset.get_idx_split()
 data = dataset[0]
 data.node_species = None
 data.y = data.y.to(torch.float)
-
+print(data.edge_attr)
 # Initialize features of nodes by aggregating edge features.
 row, col = data.edge_index
 data.x = scatter(data.edge_attr, col, 0, dim_size=data.num_nodes, reduce='add')
@@ -137,7 +137,7 @@ def test():
     return train_rocauc, valid_rocauc, test_rocauc
 
 
-for epoch in range(1, 1001):
+for epoch in range(1, 2):
     loss = train(epoch)
     train_rocauc, valid_rocauc, test_rocauc = test()
     print(f'Loss: {loss:.4f}, Train: {train_rocauc:.4f}, '

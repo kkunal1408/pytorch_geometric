@@ -14,6 +14,7 @@ transform = T.Compose([
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', dataset)
 dataset = Planetoid(path, dataset, transform=transform)
 data = dataset[0]
+print(data.edge_attr)
 
 
 class Net(torch.nn.Module):
@@ -54,7 +55,7 @@ def test():
     return accs
 
 
-for epoch in range(1, 201):
+for epoch in range(1, 2):
     train()
     log = 'Epoch: {:03d}, Train: {:.4f}, Test: {:.4f}'
     print(log.format(epoch, *test()))

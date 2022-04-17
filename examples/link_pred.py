@@ -21,6 +21,9 @@ dataset = Planetoid(path, name='Cora', transform=transform)
 # a data object to a list of tuples (train_data, val_data, test_data), with
 # each element representing the corresponding split.
 train_data, val_data, test_data = dataset[0]
+print(train_data)
+print(train_data.edge_label)
+print(train_data.edge_label_index)
 
 
 class Net(torch.nn.Module):
@@ -81,7 +84,7 @@ def test(data):
 
 
 best_val_auc = final_test_auc = 0
-for epoch in range(1, 101):
+for epoch in range(1, 2):
     loss = train()
     val_auc = test(val_data)
     test_auc = test(test_data)

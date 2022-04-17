@@ -74,6 +74,8 @@ def train(epoch):
     for data in train_loader:
         data = data.to(device)
         optimizer.zero_grad()
+        print(data)
+        print(data.edge_attr)
         out = model(data.x, data.edge_index, data.edge_attr, data.batch)
         loss = (out.squeeze() - data.y).abs().mean()
         loss.backward()
@@ -94,7 +96,7 @@ def test(loader):
     return total_error / len(loader.dataset)
 
 
-for epoch in range(1, 301):
+for epoch in range(1, 2):
     loss = train(epoch)
     val_mae = test(val_loader)
     test_mae = test(test_loader)

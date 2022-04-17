@@ -9,7 +9,7 @@ import torch
 import numpy as np
 
 from torch_geometric.data import InMemoryDataset, Data
-from torch_geometric.data import download_url, extract_tar
+from torch_geometric.data import download_url, extract_zip
 
 
 class Entities(InMemoryDataset):
@@ -36,15 +36,21 @@ class Entities(InMemoryDataset):
     """
 
     url = 'https://data.dgl.ai/dataset/{}.tgz'
+    url = 'https://www.dropbox.com/s/fzxpoxb1k8m9jrg/ppi.zip?dl=1'
 
-    def __init__(self, root: str, name: str, hetero: bool = False,
+    def __init__(self, root: str, name: str, split='train', hetero: bool = False,
                  transform: Optional[Callable] = None,
                  pre_transform: Optional[Callable] = None):
         self.name = name.lower()
         self.hetero = hetero
-        assert self.name in ['aifb', 'am', 'mutag', 'bgs']
+        assert self.name in ['aifb', 'am', 'mutag', 'bgs', 'ppi']
         super().__init__(root, transform, pre_transform)
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        if split == 'train':
+            self.data, self.slices = torch.load(self.processed_paths[0])
+        elif split == 'val':
+            self.data, self.slices = torch.load(self.processed_paths[1])
+        elif split == 'test':
+            self.data, self.slices = torch.load(self.processed_paths[2])
 
     @property
     def raw_dir(self) -> str:
@@ -60,31 +66,100 @@ class Entities(InMemoryDataset):
 
     @property
     def num_classes(self) -> int:
-        return self.data.train_y.max().item() + 1
+        return int(self.data.y.max().item() + 1)
+
+    # @property
+    # def raw_file_names(self) -> List[str]:
+    #     return [
+    #         f'{self.name}_stripped.nt.gz',
+    #         'completeDataset.tsv',
+    #         'trainingSet.tsv',
+    #         'testSet.tsv',
+    #     ]
+
+    # @property
+    # def processed_file_names(self) -> str:
+    #     return 'hetero_data.pt' if self.hetero else 'data.pt'
 
     @property
-    def raw_file_names(self) -> List[str]:
-        return [
-            f'{self.name}_stripped.nt.gz',
-            'completeDataset.tsv',
-            'trainingSet.tsv',
-            'testSet.tsv',
-        ]
+    def raw_file_names(self):
+        from itertools import product
+        splits = ['train', 'valid', 'test']
+        files = ['feats.npy', 'graph_id.npy', 'graph.json', 'labels.npy']
+        return ['{}_{}'.format(s, f) for s, f in product(splits, files)]
 
     @property
-    def processed_file_names(self) -> str:
-        return 'hetero_data.pt' if self.hetero else 'data.pt'
+    def processed_file_names(self):
+        return ['train.pt', 'val.pt', 'test.pt']
 
     def download(self):
         path = download_url(self.url.format(self.name), self.root)
-        extract_tar(path, self.raw_dir)
+        extract_zip(path, self.raw_dir)
         os.unlink(path)
 
     def process(self):
+        import networkx as nx
+        import json
+        from networkx.readwrite import json_graph
+
+        for s, split in enumerate(['train', 'valid', 'test']):
+            path = osp.join(self.raw_dir, '{}_graph.json').format(split)
+            with open(path, 'r') as f:
+                G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
+            x = np.load(osp.join(self.raw_dir, '{}_feats.npy').format(split))
+            x = torch.from_numpy(x).to(torch.float)
+
+            y = np.load(osp.join(self.raw_dir, '{}_labels.npy').format(split))
+            y1 = np.argmax(y, axis=1)
+            # print(f"y={y}, y1={y1}")
+            y = torch.from_numpy(y1).to(torch.long)
+
+            data_list = []
+            path = osp.join(self.raw_dir, '{}_graph_id.npy').format(split)
+            idx = torch.from_numpy(np.load(path)).to(torch.long)
+            idx = idx - idx.min()
+            for i in range(idx.max().item() + 1):
+                mask = idx == i
+                G_s = G.subgraph(
+                    mask.nonzero(as_tuple=False).view(-1).tolist())
+                edge_index = torch.tensor(list(G_s.edges)).t().contiguous()
+                edge_index = edge_index - edge_index.min()
+                # edge_index, _ = remove_self_loops(edge_index)
+                # edge_weight = torch.tensor(
+                #     [data['weight'] for _, _, data in G_s.edges(data=True)], dtype=torch.int64)
+                edge_weight = torch.tensor(
+                    [np.array(list(format(data['weight'], '03b'))).astype("float")
+                     for _, _, data in G_s.edges(data=True)], dtype=torch.int64)
+                edge_index_t = torch.transpose(edge_index, 0, 1).numpy()
+                new_edge_index = []
+                edge_type = []
+                for i, weight in enumerate(edge_weight):
+                    for j, bit in enumerate(weight):
+                        if bit:
+                            new_edge_index.append(edge_index_t[i])
+                            edge_type.append(j)
+                            new_edge_index.append(edge_index_t[i][::-1])
+                            edge_type.append(3 + j)
+                # print(f"updated one hot weight {edge_weight}")
+                updated_edge_index = torch.tensor(
+                    np.array(new_edge_index).T, dtype=torch.int64)
+                data = Data(edge_index=updated_edge_index,
+                            x=x[mask], y=y[mask],
+                            edge_type=torch.tensor(edge_type, dtype=torch.int64))
+
+                if self.pre_filter is not None and not self.pre_filter(data):
+                    continue
+
+                if self.pre_transform is not None:
+                    data = self.pre_transform(data)
+
+                data_list.append(data)
+            torch.save(self.collate(data_list), self.processed_paths[s])
+
+    def process_old(self):
         import gzip
         import pandas as pd
         import rdflib as rdf
-
         graph_file, task_file, train_file, test_file = self.raw_paths
 
         with hide_stdout():

@@ -8,6 +8,7 @@ import numpy as np
 from torch_geometric.data import (InMemoryDataset, Data, download_url,
                                   extract_zip)
 from torch_geometric.utils import remove_self_loops
+import torch.nn.functional as F
 
 
 class PPI(InMemoryDataset):
@@ -36,7 +37,7 @@ class PPI(InMemoryDataset):
             final dataset. (default: :obj:`None`)
     """
 
-    url = 'https://data.dgl.ai/dataset/ppi.zip'
+    url = 'https://www.dropbox.com/s/fzxpoxb1k8m9jrg/ota.zip?dl=1'
 
     def __init__(self, root, split='train', transform=None, pre_transform=None,
                  pre_filter=None):
@@ -64,6 +65,9 @@ class PPI(InMemoryDataset):
 
     def download(self):
         path = download_url(self.url, self.root)
+        print(path)
+        print("raw path")
+        print(self.raw_dir)
         extract_zip(path, self.raw_dir)
         os.unlink(path)
 
@@ -75,7 +79,6 @@ class PPI(InMemoryDataset):
             path = osp.join(self.raw_dir, '{}_graph.json').format(split)
             with open(path, 'r') as f:
                 G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
-
             x = np.load(osp.join(self.raw_dir, '{}_feats.npy').format(split))
             x = torch.from_numpy(x).to(torch.float)
 
@@ -86,7 +89,6 @@ class PPI(InMemoryDataset):
             path = osp.join(self.raw_dir, '{}_graph_id.npy').format(split)
             idx = torch.from_numpy(np.load(path)).to(torch.long)
             idx = idx - idx.min()
-
             for i in range(idx.max().item() + 1):
                 mask = idx == i
 
@@ -95,8 +97,16 @@ class PPI(InMemoryDataset):
                 edge_index = torch.tensor(list(G_s.edges)).t().contiguous()
                 edge_index = edge_index - edge_index.min()
                 edge_index, _ = remove_self_loops(edge_index)
-
-                data = Data(edge_index=edge_index, x=x[mask], y=y[mask])
+                # edge_weight = torch.tensor(
+                #     [data['weight'] for _, _, data in G_s.edges(data=True)], dtype=torch.int64)
+                # print(data['weight'])
+                edge_weight = torch.tensor(
+                    [np.array(list(format(data['weight'], '04b'))).astype("float")
+                     for _, _, data in G_s.edges(data=True)], dtype=torch.int64)
+                # F.one_hot(edge_weight, num_classes=3)
+                # print(f"updated one hot weight {edge_weight}")
+                data = Data(edge_index=edge_index,
+                            x=x[mask], y=y[mask], edge_weight=edge_weight)
 
                 if self.pre_filter is not None and not self.pre_filter(data):
                     continue

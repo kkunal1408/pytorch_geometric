@@ -80,7 +80,7 @@ def test(loader):
     return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
 
 
-for epoch in range(1, 201):
+for epoch in range(1, 2):
     loss = train()
     val_f1 = test(val_loader)
     test_f1 = test(test_loader)

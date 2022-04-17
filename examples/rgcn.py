@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch_geometric.datasets import Entities
 from torch_geometric.utils import k_hop_subgraph
 from torch_geometric.nn import RGCNConv, FastRGCNConv
+from torch_geometric.loader import DataLoader
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str,
@@ -17,65 +18,108 @@ if args.dataset in ['AIFB', 'MUTAG']:
     RGCNConv = FastRGCNConv
 
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Entities')
-dataset = Entities(path, args.dataset)
-data = dataset[0]
 
-# BGS and AM graphs are too big to process them in a full-batch fashion.
-# Since our model does only make use of a rather small receptive field, we
-# filter the graph to only contain the nodes that are at most 2-hop neighbors
-# away from any training/test node.
-node_idx = torch.cat([data.train_idx, data.test_idx], dim=0)
-node_idx, edge_index, mapping, edge_mask = k_hop_subgraph(
-    node_idx, 2, data.edge_index, relabel_nodes=True)
+train_dataset = Entities(path, 'ppi', split='train')
+val_dataset = Entities(path, 'ppi', split='val')
+test_dataset = Entities(path, 'ppi', split='test')
+train_loader = DataLoader(train_dataset, batch_size=2, shuffle=False)
+val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False)
 
-data.num_nodes = node_idx.size(0)
-data.edge_index = edge_index
-data.edge_type = data.edge_type[edge_mask]
-data.train_idx = mapping[:data.train_idx.size(0)]
-data.test_idx = mapping[data.train_idx.size(0):]
+print(train_dataset[0])
+num_relations = train_dataset.num_relations
+num_classes = train_dataset.num_classes
+num_features = train_dataset.num_features
+print(num_relations, num_classes, num_features)
 
 
 class Net(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, num_layers, hidden_channels):
         super(Net, self).__init__()
-        self.conv1 = RGCNConv(data.num_nodes, 16, dataset.num_relations,
-                              num_bases=30)
-        self.conv2 = RGCNConv(16, dataset.num_classes, dataset.num_relations,
-                              num_bases=30)
+        self.convs = torch.nn.ModuleList()
+        self.convs.append(
+            RGCNConv(train_dataset.num_features, hidden_channels,
+                     num_relations, num_bases=30))
+        for _ in range(num_layers - 2):
+            self.convs.append(
+                RGCNConv(hidden_channels, hidden_channels, num_relations,
+                         num_bases=30))
+        self.convs.append(RGCNConv(hidden_channels, num_classes, num_relations,
+                                   num_bases=30))
+        print(
+            f"number of layers k:{len(self.convs)} hidden layersize :{hidden_channels}")
 
-    def forward(self, edge_index, edge_type):
-        x = F.relu(self.conv1(None, edge_index, edge_type))
-        x = self.conv2(x, edge_index, edge_type)
-        return F.log_softmax(x, dim=1)
+    def forward(self, data):
+        x, edge_index, edge_type = data.x, data.edge_index, data.edge_type
+        for conv in self.convs:
+            x1 = conv(x, edge_index, edge_type)
+            x = F.relu(x1)
+        return F.log_softmax(x1, dim=1)
+
+
+# class Net(torch.nn.Module):
+#     def __init__(self, num_layers, hidden_channels):
+#         super().__init__()
+#         self.conv1 = RGCNConv(train_dataset.num_features, 16, num_relations,
+#                               num_bases=30)
+#         self.conv2 = RGCNConv(16, num_classes, num_relations,
+#                               num_bases=30)
+
+#     def forward(self, data):
+#         x, edge_index, edge_type = data.x, data.edge_index, data.edge_type
+#         x = F.relu(self.conv1(x, edge_index, edge_type))
+#         x = self.conv2(x, edge_index, edge_type)
+#         return F.log_softmax(x, dim=1)
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = torch.device('cpu') if args.dataset == 'AM' else device
-model, data = Net().to(device), data.to(device)
+model = Net(4, 16).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0005)
 
 
-def train():
+def train(train_loader):
     model.train()
-    optimizer.zero_grad()
-    out = model(data.edge_index, data.edge_type)
-    loss = F.nll_loss(out[data.train_idx], data.train_y)
-    loss.backward()
-    optimizer.step()
-    return loss.item()
+
+    total_loss = total_examples = 0
+    # print(f"{train_loader}")
+    for data in train_loader:
+        data = data.to(device)
+        # print(f"data {data}")
+        optimizer.zero_grad()
+        # print(data.edge_index, data.edge_type)
+        # print(f"batch size {data.x.size(0)}")
+        loss = F.nll_loss(model(data), data.y)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * data.num_nodes
+        total_examples += data.num_nodes
+    return total_loss / total_examples
 
 
 @torch.no_grad()
-def test():
+def test(loader):
     model.eval()
-    pred = model(data.edge_index, data.edge_type).argmax(dim=-1)
-    train_acc = pred[data.train_idx].eq(data.train_y).to(torch.float).mean()
-    test_acc = pred[data.test_idx].eq(data.test_y).to(torch.float).mean()
-    return train_acc.item(), test_acc.item()
+
+    ys, preds = [], []
+    for data in loader:
+        ys.append(data.y)
+        data = data.to(device)
+        pred = model(data).argmax(dim=-1)
+        preds.append(pred.cpu())
+
+    y = torch.cat(ys, dim=0).to(torch.float)
+    pred = torch.cat(preds, dim=0).to(torch.float)
+    print(y, pred)
+    acc = pred.eq(y).to(torch.float).mean()
+    return acc.item()
 
 
-for epoch in range(1, 51):
-    loss = train()
-    train_acc, test_acc = test()
-    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Train: {train_acc:.4f} '
-          f'Test: {test_acc:.4f}')
+for epoch in range(1, 10):
+    loss = train(train_loader)
+    train_acc = test(train_loader)
+    val_acc = test(val_loader)
+    test_acc = test(test_loader)
+    print(
+        f'Epoch: {epoch:02d}, Loss: {loss:.4f}, \
+            Train: {train_acc:.4f}, Val accuracy: {val_acc:.4f}, Test accuracy: {test_acc:.4f}')

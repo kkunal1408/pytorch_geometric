@@ -12,6 +12,7 @@ print(data)
 
 # We initialize conference node features with a single feature.
 data['conference'].x = torch.ones(data['conference'].num_nodes, 1)
+print(data)
 
 
 class HeteroGNN(torch.nn.Module):
@@ -49,6 +50,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=0.001)
 def train():
     model.train()
     optimizer.zero_grad()
+    print(data)
     out = model(data.x_dict, data.edge_index_dict)
     mask = data['author'].train_mask
     loss = F.cross_entropy(out[mask], data['author'].y[mask])
@@ -70,7 +72,7 @@ def test():
     return accs
 
 
-for epoch in range(1, 101):
+for epoch in range(1, 2):
     loss = train()
     train_acc, val_acc, test_acc = test()
     print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, '
