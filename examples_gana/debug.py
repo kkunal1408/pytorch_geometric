@@ -15,7 +15,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 @torch.no_grad()
 def debug(loader, result_dir, model):
     model.eval()
-    ys, preds = [], []
     assert os.path.exists(
         '../data/PPI_GANA/raw/valid_name_map.json'), f'no map file found '
     with open('../data/PPI_GANA/raw/valid_name_map.json', "r") as f:
@@ -26,17 +25,17 @@ def debug(loader, result_dir, model):
 
     for data in loader:
         plt.figure(figsize=(12, 12))
-        ys.append(data.y)
         start = time.time()
-        out = model(data.x.to(device), data.edge_index.to(device))
+        out = model(data.to(device))
         end = time.time()
-        preds.append((out > 0).float().cpu())
         eles, x_names = x_names[:len(data.y)], x_names[len(data.y):]
-        y_val = [row.index(1) for row in data.y.tolist()]
-        # print(out)
-        y_pred = [row.index(1) for row in (out > 0).tolist()]
+        # y_val = [row.index(1) for row in data.y.tolist()]
+        # y_pred = [row.index(1) for row in (out > 0).tolist()]
+        y_val = np.argmax(data.y, axis=1).to(torch.long).tolist()
+        y_pred = model(data).argmax(dim=-1)
         df = pd.DataFrame({'actual': y_val, 'predicted': y_pred})
         df['true'] = (df['actual'] != df['predicted'])
+        print(df)
         cm = confusion_matrix(y_val, y_pred)
         FP = cm.sum(axis=0) - np.diag(cm)
         FN = cm.sum(axis=1) - np.diag(cm)
@@ -76,5 +75,20 @@ def debug(loader, result_dir, model):
         df.to_csv(
             f"{result_dir}/{str(count)}.csv")
         count += 1
-        if count %20 == 5:
-            break
+        # if count %20 == 5:
+        break
+
+
+def plot_results(xlimit, ylimit, title, dict_key, fpath, summary):
+	fig, ax = plt.subplots()
+	for key, value in summary.items():
+		ax.plot(value[dict_key], label=key)
+	ax.set_ylim(0, xlimit)
+	ax.set_xlim(0, ylimit)
+	ax.set_ylabel(title, fontsize=14, fontweight='bold')
+	ax.set_xlabel('# Epochs', fontsize=14, fontweight='bold')
+	ax.set_title(f'{title} with epochs', fontsize=14, fontweight='bold')
+	ax.legend()
+	if os.path.exists(fpath):
+		os.remove(fpath)
+	fig.savefig(fpath)

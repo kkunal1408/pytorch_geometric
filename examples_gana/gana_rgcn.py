@@ -135,10 +135,9 @@ def debug(loader):
     import networkx as nx
 
     model.eval()
-    ys, preds = [], []
     assert os.path.exists(
-        '../data/PPI_GANA/raw/valid_name_map.json'), f'no map file found '
-    with open('../data/PPI_GANA/raw/valid_name_map.json', "r") as f:
+        '../data/Entities/ppi/raw/valid_name_map.json'), f'no map file found '
+    with open('../data/Entities/ppi/raw/valid_name_map.json', "r") as f:
         map_data = json.load(f)
     x_names = [map_data[str(i)] for i in range(len(map_data))]
     count = 0
@@ -149,24 +148,24 @@ def debug(loader):
 
     for data in loader:
         plt.figure(figsize=(12, 12))
-        ys.append(data.y)
         start = time.time()
-        out = model(data.x.to(device), data.edge_index.to(device))
+        out = model(data)
         end = time.time()
-        preds.append((out > 0).float().cpu())
         eles, x_names = x_names[:len(data.y)], x_names[len(data.y):]
-        y_val = [row.index(1) for row in data.y.tolist()]
-        y_pred = [row.index(True) for row in (out > 0).tolist()]
+
+        y_val = data.y
+        y_pred = out.argmax(dim=-1)
         df = pd.DataFrame({'actual': y_val, 'predicted': y_pred})
         df['true'] = (df['actual'] != df['predicted'])
-        cm = confusion_matrix(y_val, y_pred)
+
+        cm = confusion_matrix(df['actual'], df['predicted'])
         FP = cm.sum(axis=0) - np.diag(cm)
         FN = cm.sum(axis=1) - np.diag(cm)
         TP = np.diag(cm)
         TN = cm.sum() - (FP + FN + TP)
         TPR = TP / (TP + FN)
         FPR = FP / (FP + TN)
-        f1 = f1_score(data.y.cpu().numpy(), (out > 0).cpu().numpy(), average='micro')
+        f1 = f1_score(data.y.cpu().numpy(), y_pred, average='micro')
         G = to_networkx(data, node_attrs=['y'], to_undirected=True)
         mapping = {k: i for k, i in enumerate(eles)}
         incorrect_nodes = [v for k, v in mapping.items() if df['true'][k]]
@@ -178,6 +177,7 @@ def debug(loader):
         label_kwargs['font_size'] = 10
         ax = plt.gca()
         pos = nx.spring_layout(G, seed=1)
+        print(len(G.nodes()))
         for source, target, _ in G.edges(data=True):
             ax.annotate(
                 '', xy=pos[target], xycoords='data', xytext=pos[source],
@@ -190,15 +190,16 @@ def debug(loader):
             G, pos, nodelist=incorrect_nodes, node_color="tab:red")
         nx.draw_networkx_labels(G, pos, **label_kwargs)
         df['name'] = eles
-        plt.title(
-            f"f1 score: {format(f1,'.2')} TPR: {TPR} FPR: {FPR} time: {format(1000*(end - start), '.4')}")
+        plt_title = f"f1 score: {format(f1,'.2')} TPR: {TPR} FPR: {FPR} time: {format(1000*(end - start), '.4')}"
+        plt.title(plt_title)
+        print(plt_title)
         plt.savefig(
             f"{result_dir}/{str(count)}.png")
         df.to_csv(
             f"{result_dir}/{str(count)}.csv")
         count += 1
-        if count == 5:
-            break
+        # if count == 5:
+        break
 
 
 debug(val_loader)

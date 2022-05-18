@@ -51,7 +51,7 @@ class Net(torch.nn.Module):
             x1 = conv(x, edge_index, edge_weight)
             x = F.relu(x1)
             x = F.dropout(x, training=self.training)
-        return x
+        return x1
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

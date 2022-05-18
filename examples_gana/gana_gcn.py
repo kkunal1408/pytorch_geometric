@@ -28,20 +28,16 @@ class Net(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels):
         super(Net, self).__init__()
         self.convs = torch.nn.ModuleList()
-        self.convs.append(
-            GCNConv(train_dataset.num_features, hidden_channels, cached=False,
-                     normalize=not args.use_gdc))
+        self.convs.append(GCNConv(train_dataset.num_features, hidden_channels))
         for _ in range(num_layers - 2):
-            self.convs.append(
-                GCNConv(hidden_channels, hidden_channels, cached=False,
-                         normalize=not args.use_gdc))
-        self.convs.append(GCNConv(hidden_channels, train_dataset.num_classes, cached=False,
-                                  normalize = not args.use_gdc))
-        print(
-            f"number of layers k:{len(self.convs)} hidden layersize :{hidden_channels}")
+            self.convs.append(GCNConv(hidden_channels, hidden_channels))
+        self.convs.append(GCNConv(hidden_channels, train_dataset.num_classes))
+        print(f"# of layers:{len(self.convs),} hidden layers:{hidden_channels}")
 
 
-    def forward(self, x, edge_index):
+    def forward(self, data):
+        x= data.x
+        edge_index = data.edge_index
         for conv in self.convs:
             x1 = conv(x, edge_index)
             x = F.relu(x1)
@@ -62,7 +58,8 @@ def train():
     for data in train_loader:
         data = data.to(device)
         optimizer.zero_grad()
-        loss = loss_op(model(data.x, data.edge_index), data.y)
+        # print(data.x.size(), data.edge_index.size())
+        loss = loss_op(model(data), data.y)
         total_loss += loss.item() * data.num_graphs
         loss.backward()
         optimizer.step()
@@ -76,7 +73,7 @@ def test(loader):
     ys, preds = [], []
     for data in loader:
         ys.append(data.y)
-        out = model(data.x.to(device), data.edge_index.to(device))
+        out = model(data)
         preds.append((out > 0).float().cpu())
 
     y, pred = torch.cat(ys, dim=0).numpy(), torch.cat(preds, dim=0).numpy()
@@ -92,6 +89,5 @@ for epoch in range(1, int(args.epochs)):
 
 import os
 result_dir = f"results/{os.path.basename(__file__).split('.')[0]}/{args.num_layers}_{args.hidden_channels}"
-print(result_dir)
 os.makedirs(result_dir, exist_ok=True)
 debug(val_loader, result_dir, model)
