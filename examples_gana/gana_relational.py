@@ -4,12 +4,12 @@ import numpy as np
 import json
 import logging
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from torch_geometric.datasets import PPI
+from torch_geometric.datasets import Entities
 from torch_geometric.loader import DataLoader
 from sklearn.metrics import f1_score
-from torch_geometric.nn import (GCNConv,
-GATConv)
+from gana_models import (GanaRGATConv,
+GanaRGCNConv
+)
 from debug import debug, plot_results
 
 import csv
@@ -23,84 +23,22 @@ if os.path.exists('LOG/logfile.log'):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-k', '--num_layers', default=4, help="number of layers")
-parser.add_argument('-epochs', '--epochs', default=20, help="number of epochs")
+parser.add_argument('-epochs', '--epochs', default=2, help="number of epochs")
 parser.add_argument('-hidden_channels', '--hidden_channels', default=16, help="number of channels in hidden layers")
 args = parser.parse_args()
 
-path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'PPI_GANA')
-train_dataset = PPI(path, split='train')
-val_dataset = PPI(path, split='val')
-test_dataset = PPI(path, split='test')
+path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'Entities')
+train_dataset = Entities(path, 'ppi', split='train')
+val_dataset = Entities(path, 'ppi', split='val')
+test_dataset = Entities(path, 'ppi', split='test')
 train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-def target_1d(y):
-    return np.argmax(y, axis=1).to(torch.long)
 
-# for loader in [train_loader, val_loader, test_loader]:
-#     target_1d(loader)
-class GanaGCN(torch.nn.Module):
-    def __init__(self, num_layers, hidden_channels):
-        super().__init__()
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(GCNConv(train_dataset.num_features, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs.append(GCNConv(hidden_channels, train_dataset.num_classes))
-        print(f"GanaGCN: # of layers:{len(self.convs)}, hidden layers:{hidden_channels}")
-
-
-    def forward(self, data):
-        x = data.x
-        for conv in self.convs:
-            x1 = conv(x, data.edge_index)
-            x = F.relu(x1)
-            x = F.dropout(x, training=self.training)
-        return F.log_softmax(x1, dim=1)
-
-
-class GanaGCNEdgeWeight(torch.nn.Module):
-    def __init__(self, num_layers, hidden_channels):
-        super().__init__()
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(GCNConv(train_dataset.num_features, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels))
-        self.convs.append(GCNConv(hidden_channels, train_dataset.num_classes))
-        print(
-            f"GanaGCNEdgeWeight: # of layers:{len(self.convs)}, hidden layers:{hidden_channels}")
-
-    def forward(self, data):
-        x=data.x
-        for conv in self.convs:
-            x1 = conv(x, data.edge_index, data.edge_weight)
-            x = F.relu(x1)
-            x = F.dropout(x, training=self.training)
-        return x1
-
-class GanaGAT(torch.nn.Module):
-    def __init__(self, num_layers, hidden_channels):
-        super().__init__()
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(
-            GATConv(train_dataset.num_features, hidden_channels, heads=8, dropout=0.6))
-        for _ in range(num_layers - 2):
-            self.convs.append(
-                GATConv(hidden_channels * 8, hidden_channels * 8,
-                        heads=1, concat=True, dropout=0.6))
-        self.convs.append(GATConv(hidden_channels * 8, train_dataset.num_classes,
-                                  heads=1, concat=False, dropout=0.6))
-
-        print(
-            f"GanaGAT: # layers k:{len(self.convs)}, hidden layers :{hidden_channels}")
-
-    def forward(self, data):
-        x = data.x
-        for conv in self.convs:
-            x1 = conv(x, data.edge_index)
-            x = F.elu(x1)
-            x = F.dropout(x, p=0.6, training=self.training)
-        return x1
+num_relations = train_dataset.num_relations
+num_classes = train_dataset.num_classes
+num_features = train_dataset.num_features
+print(num_relations, num_classes, num_features)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # loss_op = torch.nn.BCEWithLogitsLoss()
@@ -112,13 +50,12 @@ else:
     summary = {}
 
 regression_models = [
-    GanaGCN,
-    # GanaGAT,
-    GanaGCNEdgeWeight
+GanaRGATConv,
+GanaRGCNConv
 ]
 for Net in regression_models:
-    model = Net(int(args.num_layers), int(args.hidden_channels)).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+    model = Net(int(args.num_layers), int(args.hidden_channels), train_dataset.num_features, train_dataset.num_classes).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=0.0005)
 
     def train():
         model.train()
@@ -126,7 +63,7 @@ for Net in regression_models:
         for data in train_loader:
             data = data.to(device)
             optimizer.zero_grad()
-            loss = F.nll_loss(model(data), target_1d(data.y))
+            loss = F.nll_loss(model(data), data.y)
             total_loss += loss.item() * data.num_graphs
             loss.backward()
             optimizer.step()
@@ -138,14 +75,15 @@ for Net in regression_models:
 
         ys, preds = [], []
         for data in loader:
-            ys.append(target_1d(data.y))
+            ys.append(data.y)
             data = data.to(device)
             pred = model(data).argmax(dim=-1)
             preds.append(pred.cpu())
 
         y, pred = torch.cat(ys, dim=0).numpy(), torch.cat(preds, dim=0).numpy()
         return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
-
+        # acc = pred.eq(y).to(torch.float).mean()
+        # return acc.item()
     epoch_list = []
     loss_list = []
     val_list = []

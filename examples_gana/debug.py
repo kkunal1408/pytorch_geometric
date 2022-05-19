@@ -31,11 +31,14 @@ def debug(loader, result_dir, model):
         eles, x_names = x_names[:len(data.y)], x_names[len(data.y):]
         # y_val = [row.index(1) for row in data.y.tolist()]
         # y_pred = [row.index(1) for row in (out > 0).tolist()]
-        y_val = np.argmax(data.y, axis=1).to(torch.long).tolist()
-        y_pred = model(data).argmax(dim=-1)
+        if len(data.y.size())> 1:
+            y_val = np.argmax(data.y, axis=1).to(torch.long).tolist()
+        else:
+            y_val = data.y
+        y_pred = out.argmax(dim=-1)
         df = pd.DataFrame({'actual': y_val, 'predicted': y_pred})
         df['true'] = (df['actual'] != df['predicted'])
-        print(df)
+        # print(df)
         cm = confusion_matrix(y_val, y_pred)
         FP = cm.sum(axis=0) - np.diag(cm)
         FN = cm.sum(axis=1) - np.diag(cm)
@@ -43,7 +46,7 @@ def debug(loader, result_dir, model):
         TN = cm.sum() - (FP + FN + TP)
         TPR = TP / (TP + FN)
         FPR = FP / (FP + TN)
-        f1 = f1_score(data.y.cpu().numpy(), (out > 0).cpu().numpy(), average='micro')
+        f1 = f1_score(y_val, y_pred, average='micro')
         G = to_networkx(data, node_attrs=['y'], to_undirected=True)
         mapping = {k: i for k, i in enumerate(eles)}
         incorrect_nodes = [v for k, v in mapping.items() if df['true'][k]]

@@ -24,7 +24,6 @@ print(train_dataset[0])
 print(train_dataset[0].x)
 print(train_dataset[0].y)
 print(train_dataset[0].adj_t)
-exit()
 class Net(torch.nn.Module):
     def __init__(self, hidden_channels, num_layers, alpha, theta,
                  shared_weights=True, dropout=0.0):
