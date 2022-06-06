@@ -22,8 +22,8 @@ if os.path.exists('LOG/logfile.log'):
     os.remove('LOG/logfile.log')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-k', '--num_layers', default=4, help="number of layers")
-parser.add_argument('-epochs', '--epochs', default=2, help="number of epochs")
+parser.add_argument('-k', '--num_layers', default=6, help="number of layers")
+parser.add_argument('-epochs', '--epochs', default=50, help="number of epochs")
 parser.add_argument('-hidden_channels', '--hidden_channels', default=16, help="number of channels in hidden layers")
 args = parser.parse_args()
 
@@ -50,7 +50,7 @@ else:
     summary = {}
 
 regression_models = [
-GanaRGATConv,
+# GanaRGATConv,
 GanaRGCNConv
 ]
 for Net in regression_models:

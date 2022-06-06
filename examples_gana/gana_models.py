@@ -1,3 +1,4 @@
+from torch_geometric.utils import normalized_cut, degree
 import torch
 import torch.nn.functional as F
 from torch.nn import Linear
@@ -7,12 +8,17 @@ ChebConv,
 GCN2Conv,
 SAGEConv,
 RGATConv,
+graclus,
+max_pool,
+max_pool_x,
+global_mean_pool,
 RGCNConv)
 
 
 class GanaGCN(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes):
         super().__init__()
+        torch.manual_seed(12345)
         self.convs = torch.nn.ModuleList()
         self.convs.append(GCNConv(num_features, hidden_channels))
         for _ in range(num_layers - 2):
@@ -32,6 +38,7 @@ class GanaGCN(torch.nn.Module):
 class GanaGCN2(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes, alpha=0.5, theta=1.0, shared_weights=True, dropout=0.0):
         super().__init__()
+        torch.manual_seed(12345)
         self.lins = torch.nn.ModuleList()
         self.lins.append(Linear(num_features, hidden_channels))
         self.lins.append(Linear(hidden_channels, num_classes))
@@ -60,6 +67,7 @@ class GanaGCN2(torch.nn.Module):
 class GanaGCNEdgeWeight(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes):
         super().__init__()
+        torch.manual_seed(12345)
         self.convs = torch.nn.ModuleList()
         self.convs.append(GCNConv(num_features, hidden_channels))
         for _ in range(num_layers - 2):
@@ -79,6 +87,7 @@ class GanaGCNEdgeWeight(torch.nn.Module):
 class GanaGAT(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes):
         super().__init__()
+        torch.manual_seed(12345)
         self.convs = torch.nn.ModuleList()
         self.convs.append(
             GATConv(num_features, hidden_channels, heads=8, dropout=0.6))
@@ -104,6 +113,7 @@ class GanaGAT(torch.nn.Module):
 class GanaChebConv(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes):
         super().__init__()
+        torch.manual_seed(12345)
         self.convs = torch.nn.ModuleList()
         self.convs.append(
             ChebConv(num_features, hidden_channels, K=4))
@@ -128,6 +138,7 @@ class GanaChebConv(torch.nn.Module):
 class GanaSAGEConv(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes):
         super().__init__()
+        torch.manual_seed(12345)
         self.convs = torch.nn.ModuleList()
         self.convs.append(
             SAGEConv(num_features, hidden_channels))
@@ -176,6 +187,7 @@ class GanaRGATConv(torch.nn.Module):
 class GanaRGCNConv(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes=2, num_relations=6):
         super().__init__()
+        torch.manual_seed(12345)
         self.convs = torch.nn.ModuleList()
         self.convs.append(
             RGCNConv(num_features, hidden_channels,
@@ -197,3 +209,48 @@ class GanaRGCNConv(torch.nn.Module):
             x = F.dropout(x, training=self.training)
 
         return F.log_softmax(x1, dim=1)
+
+
+class GanaOrg(torch.nn.Module):
+    def __init__(self, num_layers, hidden_channels, num_features, num_classes):
+        super().__init__()
+        torch.manual_seed(12345)
+        hops = num_layers
+        self.conv1 = ChebConv(num_features, hidden_channels, K=hops)
+        self.conv2 = ChebConv(hidden_channels, hidden_channels, K=hops)
+        # self.fc1 = torch.nn.Linear(hidden_channels, 128)
+        # self.fc2 = torch.nn.Linear(128, num_classes)
+        print(
+            f"Gana_original: # layers k:2, hidden layers :{hidden_channels}")
+
+    def forward(self, data):
+        data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_weight))
+        # eweight = data.edge_weight
+        # print(data.edge_index)
+        weight = normalized_cut(data.edge_index, data.edge_weight)
+        cluster = graclus(data.edge_index, weight, data.x.size(0))
+        # data.edge_weight = degree(data.edge_index)
+        data, map = max_pool(cluster, data)
+        # node_degree = degree(data.edge_index[1],
+        #                           num_nodes=data.batch.size(0), dtype=torch.long)
+        # data.edge_weight = torch.tensor(
+        #     [node_degree[_edge] for _edge in data.edge_index[1]],
+        #     dtype=torch.float)
+        data.edge_weight = torch.ones(len(data.edge_index[0]))
+        # new_weight = torch.zeros(len(data.edge_index[0],0), dtype=torch.float)
+        # for i in range(len(new_weight)):
+        #     new_weight[i] = sum(for sp in data.edge_index[0])
+        # print(eweight, map, data.edge_index)
+
+        data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_weight))
+        weight = normalized_cut(data.edge_index, data.edge_weight)
+        cluster = graclus(data.edge_index, weight, data.x.size(0))
+        data, map1 = max_pool(cluster, data)
+        remap1 = [int(map1[v]) for k, v in enumerate(map)]
+
+        # x, batch = max_pool_x(cluster, data.x, data.batch)
+        # x = global_mean_pool(x, batch)
+        # x = F.elu(self.fc1(x))
+        remap = torch.stack([data.x[v] for k, v in enumerate(remap1)])
+        return F.log_softmax(remap, dim=1)
+

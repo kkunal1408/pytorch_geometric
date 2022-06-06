@@ -12,6 +12,7 @@ GanaGCN,
 GanaGAT,
 GanaChebConv,
 GanaGCNEdgeWeight,
+GanaOrg
 )
 from debug import debug, plot_results
 
@@ -26,7 +27,7 @@ if os.path.exists('LOG/logfile.log'):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-k', '--num_layers', default=4, help="number of layers")
-parser.add_argument('-epochs', '--epochs', default=20, help="number of epochs")
+parser.add_argument('-epochs', '--epochs', default=2, help="number of epochs")
 parser.add_argument('-hidden_channels', '--hidden_channels', default=16, help="number of channels in hidden layers")
 args = parser.parse_args()
 
@@ -37,9 +38,9 @@ test_dataset = PPI(path, split='test')
 train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+
 def target_1d(y):
     return np.argmax(y, axis=1).to(torch.long)
-
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # loss_op = torch.nn.BCEWithLogitsLoss()
@@ -51,11 +52,12 @@ else:
     summary = {}
 
 regression_models = [
-    GanaGCN,
+    # GanaGCN,
     # GanaGAT,
     # GanaGCNEdgeWeight,
     # GanaChebConv,
-    # GanaSAGEConv
+    # GanaSAGEConv,
+    GanaOrg
 ]
 for Net in regression_models:
     model = Net(int(args.num_layers), int(args.hidden_channels), train_dataset.num_features, train_dataset.num_classes).to(device)
@@ -76,7 +78,6 @@ for Net in regression_models:
     @torch.no_grad()
     def test(loader):
         model.eval()
-
         ys, preds = [], []
         for data in loader:
             ys.append(target_1d(data.y))
@@ -96,6 +97,7 @@ for Net in regression_models:
     # if dict_key in summary.keys():
     #     logging.info(f"skipping run {dict_key} as summary exists")
     #     continue
+    # print(f"starting loss {test(train_loader)}")
     for epoch in range(1, int(args.epochs)):
         loss = train()
         val_f1 = test(val_loader)
@@ -114,7 +116,8 @@ for Net in regression_models:
                         'loss': loss_list, 'val': val_list, 'test': test_list}
     result_dir = f"results/{Net.__name__}/{args.num_layers}_{args.hidden_channels}"
     os.makedirs(result_dir, exist_ok=True)
-    debug(val_loader, result_dir, model)
+    debug(val_loader, result_dir, model, 'valid')
+    debug(test_loader, result_dir, model, 'test')
     plot_results(1, int(args.epochs) - 1, 'test accuracy', 'test',
                  f'results/{Net.__name__}_test_comparison.png',summary)
     plot_results(1, int(args.epochs) - 1, 'train loss', 'loss',
