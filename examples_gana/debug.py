@@ -31,10 +31,10 @@ def debug(debug_loader, result_dir, model, data_type='valid'):
         # y_val = [row.index(1) for row in data.y.tolist()]
         # y_pred = [row.index(1) for row in (out > 0).tolist()]
         if len(data.y.size())> 1:
-            y_val = np.argmax(data.y, axis=1).to(torch.long).tolist()
+            y_val = np.argmax(data.y.cpu(), axis=1).to(torch.long).tolist()
         else:
-            y_val = data.y
-        y_pred = out.argmax(dim=-1)
+            y_val = data.y.cpu()
+        y_pred = out.argmax(dim=-1).cpu()
         df = pd.DataFrame({'actual': y_val, 'predicted': y_pred})
         df['true'] = (df['actual'] == df['predicted'])
         df['name'] = elements

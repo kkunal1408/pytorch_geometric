@@ -14,6 +14,7 @@ max_pool_x,
 global_mean_pool,
 RGCNConv)
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class GanaGCN(torch.nn.Module):
     def __init__(self, num_layers, hidden_channels, num_features, num_classes):
@@ -221,7 +222,7 @@ class GanaOrg(torch.nn.Module):
         # self.fc1 = torch.nn.Linear(hidden_channels, 128)
         # self.fc2 = torch.nn.Linear(128, num_classes)
         print(
-            f"Gana_original: # layers k:2, hidden layers :{hidden_channels}")
+            f"Gana_original: # layers k:2x{num_layers}, hidden layers :{hidden_channels}")
 
     def forward(self, data):
         data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_weight))
@@ -241,7 +242,7 @@ class GanaOrg(torch.nn.Module):
         # for i in range(len(new_weight)):
         #     new_weight[i] = sum(for sp in data.edge_index[0])
         # print(eweight, map, data.edge_index)
-
+        data = data.to(device)
         data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_weight))
         weight = normalized_cut(data.edge_index, data.edge_weight)
         cluster = graclus(data.edge_index, weight, data.x.size(0))
@@ -253,4 +254,3 @@ class GanaOrg(torch.nn.Module):
         # x = F.elu(self.fc1(x))
         remap = torch.stack([data.x[v] for k, v in enumerate(remap1)])
         return F.log_softmax(remap, dim=1)
-

@@ -39,10 +39,11 @@ train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-def target_1d(y):
-    return np.argmax(y, axis=1).to(torch.long)
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+def target_1d(y):
+    return np.argmax(y.cpu(), axis=1).to(torch.long).to(device)
+
 # loss_op = torch.nn.BCEWithLogitsLoss()
 summary_path = f'results/summary.json'
 if os.path.exists(summary_path):
@@ -85,7 +86,8 @@ for Net in regression_models:
             pred = model(data).argmax(dim=-1)
             preds.append(pred.cpu())
 
-        y, pred = torch.cat(ys, dim=0).numpy(), torch.cat(preds, dim=0).numpy()
+        y = torch.cat(ys, dim=0).cpu().numpy()
+        pred = torch.cat(preds, dim=0).cpu().numpy()
         return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
 
     epoch_list = []
