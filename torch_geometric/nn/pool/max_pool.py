@@ -65,7 +65,6 @@ def max_pool(cluster, data, transform=None):
     :rtype: :class:`torch_geometric.data.Data`
     """
     cluster, perm = consecutive_cluster(cluster)
-
     x = None if data.x is None else _max_pool_x(cluster, data.x)
     index, attr = pool_edge(cluster, data.edge_index, data.edge_attr)
     batch = None if data.batch is None else pool_batch(perm, data.batch)
@@ -76,7 +75,7 @@ def max_pool(cluster, data, transform=None):
     if transform is not None:
         data = transform(data)
 
-    return data
+    return data, cluster
 
 
 def max_pool_neighbor_x(data, flow='source_to_target'):

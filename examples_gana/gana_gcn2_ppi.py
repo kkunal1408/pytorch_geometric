@@ -1,33 +1,29 @@
 import os.path as osp
 
 import torch
+import csv
+from torch.nn import Linear
 import torch.nn.functional as F
 from sklearn.metrics import f1_score
-from torch.nn import Linear
-
-import torch_geometric.transforms as T
 from torch_geometric.datasets import PPI
-from torch_geometric.loader import DataLoader
+import torch_geometric.transforms as T
 from torch_geometric.nn import GCN2Conv
+from torch_geometric.loader import DataLoader
 
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'GCN2_PPI')
+path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'PPI_GANA')
 pre_transform = T.Compose([T.GCNNorm(), T.ToSparseTensor()])
 train_dataset = PPI(path, split='train', pre_transform=pre_transform)
 val_dataset = PPI(path, split='val', pre_transform=pre_transform)
 test_dataset = PPI(path, split='test', pre_transform=pre_transform)
-train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-print(type(train_dataset), train_dataset)
-print(train_dataset[0])
-print(train_dataset[0].x)
-print(train_dataset[0].y)
-print(train_dataset[0].adj_t)
+
 class Net(torch.nn.Module):
     def __init__(self, hidden_channels, num_layers, alpha, theta,
                  shared_weights=True, dropout=0.0):
-        super().__init__()
+        super(Net, self).__init__()
 
         self.lins = torch.nn.ModuleList()
         self.lins.append(Linear(train_dataset.num_features, hidden_channels))
@@ -92,10 +88,29 @@ def test(loader):
     y, pred = torch.cat(ys, dim=0).numpy(), torch.cat(preds, dim=0).numpy()
     return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
 
+@torch.no_grad()
+def debug(loader):
+    model.eval()
+    merged = []
+    ys, preds = [], []
+    for data in loader:
+        ys.append(data.y)
+        out = model(data.x.to(device), data.adj_t.to(device))
+        preds.append((out > 0).float().cpu())
+        debug = torch.cat((data.x.to(device), data.y.to(device), (out > 0)), dim=1)
+        merged.append(debug.cpu())
+    with open("debug_gcn2_result.csv", 'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerows(merged)
 
-for epoch in range(1, 2001):
+    y, pred = torch.cat(ys, dim=0).numpy(), torch.cat(preds, dim=0).numpy()
+    return f1_score(y, pred, average='micro') if pred.sum() > 0 else 0
+
+for epoch in range(1, 100):
     loss = train()
     val_f1 = test(val_loader)
     test_f1 = test(test_loader)
-    print(f'Epoch: {epoch:04d}, Loss: {loss:.4f}, Val: {val_f1:.4f}, '
-          f'Test: {test_f1:.4f}')
+    print('Epoch: {:02d}, Loss: {:.4f}, Val: {:.4f}, Test: {:.4f}'.format(
+        epoch, loss, val_f1, test_f1))
+
+debug(test_loader)
